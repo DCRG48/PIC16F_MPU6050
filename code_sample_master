@@ -1,0 +1,207 @@
+// DISCLAIMER !! THIS CODE HAS WORKED WITH ONLY TWO ACTUATORS. OBVIOUSLY MODIFY THE CODE FOR YOUR OWN PROJECT.  
+
+#include <16F877A.h>
+#fuses HS,NOWDT,NOPROTECT,NOLVP
+#use delay(clock=20000000)
+#use rs232(baud=9600, xmit=PIN_C6, rcv=PIN_C7)    // if you need to use debug on PC with a soft that uses rs232   (exemple : termite) set same baudrate.
+#use i2c(MASTER, sda=PIN_C4, scl=PIN_C3)
+
+#include <MATH.h>        // INSTALL THE "MATH" LIB IF YOU DONT ALREADY HAVE IT
+
+#define MPU6050_SLAVE_WRT  0xD0
+#define MPU6050_SLAVE_RD   0xD1
+
+// Register addresses
+#define MPU6050_WHO_AM_I     0x05
+#define MPU6050_SMPLRT_DIV   0x19
+#define MPU6050_CONFIG       0x1A
+#define MPU6050_GYRO_CONFIG  0x1B
+#define MPU6050_PWR_MGMT_1   0x6B
+
+#define ACCEL_XOUT_H  0x3B
+#define ACCEL_XOUT_L  0x3C
+#define ACCEL_YOUT_H  0x3D
+#define ACCEL_YOUT_L  0x3E
+#define ACCEL_ZOUT_H  0x3F
+#define ACCEL_ZOUT_L  0x40
+
+
+
+// Global variables
+ 
+int order = 0;                       
+signed int16 accel_xout;
+signed int16 accel_yout;
+signed int16 accel_zout;
+
+float accel_xangle;
+float accel_yangle;
+
+/////////////////////////////////////////////////////
+               //WRITE SLAVE//   
+/////////////////////////////////////////////////////
+
+void write_slave(int add, int val)
+{
+   i2c_start();
+   i2c_write(add);
+   i2c_write(val);
+   i2c_stop();
+   delay_ms(100);
+}
+
+/////////////////////////////////////////////////////
+               //Slave_Handler//   
+/////////////////////////////////////////////////////
+
+void Slave_Handler()                     
+{
+
+// Dont forget to choose wich axys you need to manage !   
+// Bellow you can use AXYS X or Y  accord to your needs
+
+   //Angle_X//                             
+
+if (accel_xangle <= (-5))
+   {
+     order = 1;
+   }
+
+if (accel_xangle >= (-3))
+   {
+     order = 2;
+   }
+ 
+
+if ((accel_xangle <= (-3)) && (accel_xangle >= (-5)))
+   {
+     order = 0;
+   }
+   printf("order= %d \n\r", order);
+
+}
+
+   //Angle_Y//                  // 
+
+/*
+if (accel_yangle <= (-3))
+   {
+     order = 1;
+   }
+
+if (accel_yangle >= 0)
+   {
+     order = 2;
+   }
+}
+
+*/
+
+
+/////////////////////////////////////////////////////
+               //READ WORD//   
+/////////////////////////////////////////////////////
+
+int16 MPU6050_read_word(int8 reg_addr)
+
+{
+int8 lsb, msb;
+int16 retval;
+
+i2c_start();
+i2c_write(MPU6050_SLAVE_WRT);
+i2c_write(reg_addr);
+i2c_start();
+i2c_write(MPU6050_SLAVE_RD);
+msb = i2c_read();                   // Read MSB byte first.
+lsb = i2c_read(0);                  // Do a NACK on the last read
+i2c_stop();   
+
+retval = make16(msb, lsb);
+
+return(retval);
+}
+
+
+/////////////////////////////////////////////////////
+               //ACCEL VALUES//   
+/////////////////////////////////////////////////////
+
+
+void Get_Accel_Values()
+{
+accel_xout = MPU6050_read_word(ACCEL_XOUT_H);
+accel_yout = MPU6050_read_word(ACCEL_YOUT_H);
+accel_zout = MPU6050_read_word(ACCEL_ZOUT_H);
+}   
+
+/////////////////////////////////////////////////////
+               //GET ANGLES//   
+/////////////////////////////////////////////////////
+
+
+void Get_Accel_Angles()
+{
+accel_xangle = 57.295*atan((float)accel_yout/ sqrt(pow((float)accel_zout,2)+pow((float)accel_xout,2))); //  CAN BE BETTER , YOU CAN USE THE FUNCTION "ATAN2" NOW in "math" lib
+accel_yangle = 57.295*atan((float)-accel_xout/ sqrt(pow((float)accel_zout,2)+pow((float)accel_yout,2)));
+}   
+
+
+
+/////////////////////////////////////////////////////
+               //MPU INIT//   
+/////////////////////////////////////////////////////
+
+void Setup_mpu6050(void)
+{
+delay_ms(100);
+
+i2c_start();
+i2c_write(MPU6050_SLAVE_WRT);
+i2c_write(MPU6050_PWR_MGMT_1);
+i2c_write(0x00);
+i2c_stop();
+
+i2c_start();
+i2c_write(MPU6050_SLAVE_WRT);
+i2c_write(MPU6050_GYRO_CONFIG);
+i2c_write(0x08);
+i2c_stop();
+
+i2c_start();
+i2c_write(MPU6050_SLAVE_WRT);
+i2c_write(MPU6050_SMPLRT_DIV);   
+i2c_write(0x07);
+i2c_stop();
+
+delay_ms(100);  // Gyro start-up time is 30ms after power-up.
+}
+
+/////////////////////////////////////////////////////
+               // MAIN //   
+/////////////////////////////////////////////////////
+
+void main()
+
+{
+  Setup_mpu6050();   
+
+
+while(TRUE)
+  {
+   Get_Accel_Values();
+ 
+   Get_Accel_Angles();
+   delay_ms(200);
+
+   Slave_Handler();
+   output_d(input_b());
+   write_slave(0x17,order1);
+   write_slave(0x21,order2);
+     
+   printf("accel_xangle = %7.0f \n\r", accel_xangle);
+   printf("accel_yangle = %7.0f \n\r", accel_yangle);
+   printf("\n\r");
+   delay_ms(300);
+  }
+}
